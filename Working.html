@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>User Directory (Dynamic Headers)</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 20px;
+            background: #f4f5f7;
+        }
+
+        h1 { margin-bottom: 8px; }
+
+        .subheading {
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #555;
+        }
+
+        .controls {
+            margin-bottom: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .controls input[type="text"] {
+            padding: 6px 10px;
+            font-size: 14px;
+            min-width: 260px;
+        }
+
+        .controls button {
+            padding: 6px 12px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        #status {
+            font-size: 12px;
+            color: #555;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            background: #fff;
+        }
+
+        thead {
+            background: #1f2933;
+            color: #fff;
+        }
+
+        th, td {
+            border: 1px solid #d0d7de;
+            padding: 6px 8px;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        tr:nth-child(even) { background: #f9fafb; }
+        tr:hover { background: #e5f1ff; }
+
+        .no-results {
+            text-align: center;
+            font-style: italic;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>User Directory</h1>
+    <div class="subheading">
+        This table automatically adapts to whatever headers appear in <code>random_users_500.csv</code>.
+    </div>
+
+    <div class="controls">
+        <input type="text" id="searchBox" placeholder="Search any column…">
+        <button id="clearBtn">Clear</button>
+        <span id="status"></span>
+    </div>
+
+    <table id="usersTable">
+        <thead></thead>
+        <tbody>
+            <tr>
+                <td class="no-results">Loading CSV…</td>
+            </tr>
+        </tbody>
+    </table>
+
+<script>
+    const CSV_URL = "random_users_500.csv";
+
+    let headers = [];
+    let allRows = [];
+
+    function setStatus(msg) {
+        document.getElementById('status').textContent = msg;
+    }
+
+    function parseCSV(text) {
+        if (text.charCodeAt(0) === 0xFEFF) {
+            text = text.slice(1);
+        }
+
+        text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+        const lines = text.split('\n');
+
+        const sep = lines[0].includes(';') ? ';' : ',';
+
+        headers = lines[0].split(sep).map(h => h.trim());
+
+        allRows = lines.slice(1).map(line => {
+            const cols = line.split(sep);
+            const obj = {};
+            headers.forEach((h, i) => {
+                obj[h] = (cols[i] || "").trim();
+            });
+            return obj;
+        });
+
+        return { headers, rows: allRows };
+    }
+
+    function renderTableHeaders() {
+        const thead = document.querySelector("#usersTable thead");
+        thead.innerHTML = "";
+
+        const tr = document.createElement("tr");
+        headers.forEach(h => {
+            const th = document.createElement("th");
+            th.textContent = h;
+            tr.appendChild(th);
+        });
+
+        thead.appendChild(tr);
+    }
+
+    function renderTableRows(rows) {
+        const tbody = document.querySelector("#usersTable tbody");
+        tbody.innerHTML = "";
+
+        if (rows.length === 0) {
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = headers.length;
+            td.textContent = "No results.";
+            td.className = "no-results";
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+            return;
+        }
+
+        rows.forEach(obj => {
+            const tr = document.createElement("tr");
+            headers.forEach(h => {
+                const td = document.createElement("td");
+                td.textContent = obj[h] || "";
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    function applyFilter() {
+        const term = document.getElementById("searchBox").value.toLowerCase().trim();
+        if (!term) {
+            renderTableRows(allRows);
+            setStatus(`Showing ${allRows.length} rows.`);
+            return;
+        }
+
+        const filtered = allRows.filter(row =>
+            headers.some(h => (row[h] || "").toLowerCase().includes(term))
+        );
+
+        renderTableRows(filtered);
+        setStatus(`Matched ${filtered.length} rows.`);
+    }
+
+    async function loadCSV() {
+        try {
+            const res = await fetch(CSV_URL, { cache: "no-store" });
+            const text = await res.text();
+
+            const parsed = parseCSV(text);
+
+            renderTableHeaders();
+            renderTableRows(parsed.rows);
+
+            setStatus(`Loaded ${parsed.rows.length} rows with ${parsed.headers.length} columns.`);
+        } catch (e) {
+            setStatus("Failed to load CSV.");
+            console.error(e);
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        document.getElementById("searchBox").addEventListener("input", applyFilter);
+        document.getElementById("clearBtn").addEventListener("click", () => {
+            document.getElementById("searchBox").value = "";
+            applyFilter();
+        });
+
+        loadCSV();
+    });
+</script>
+
+</body>
+</html>
