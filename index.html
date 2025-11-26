@@ -81,11 +81,11 @@
 <body>
     <h1>User Directory</h1>
     <div class="subheading">
-        Directory backed by <code>random_users.csv</code> in this repository. Search by Name or EDIPI.
+        Directory backed by ISS, contact CFP if updates need to be made. Search by Name, EDIPI, or Domain/Enclave.
     </div>
 
     <div class="controls">
-        <input type="text" id="searchBox" placeholder="Search by Name or EDIPI…">
+        <input type="text" id="searchBox" placeholder="Search by Name, EDIPI, or Domain/Enclave…" aria-label="Search users">
         <button type="button" id="clearBtn">Clear</button>
         <span id="status"></span>
     </div>
@@ -96,11 +96,12 @@
                 <th>Name</th>
                 <th>EDIPI</th>
                 <th>Last Logon</th>
+                <th>Domain/Enclave</th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td colspan="3" class="no-results">Loading data…</td>
+                <td colspan="4" class="no-results">Loading data…</td>
             </tr>
         </tbody>
     </table>
@@ -114,10 +115,15 @@
             console.log('[STATUS]', msg);
         }
 
-        // Robust CSV parser for simple CSV (no quoted commas)
+        // Simple CSV parser that assumes comma-separated, pre-formatted CSV (no quoted commas expected)
         function parseCSV(text) {
-            // Strip UTF-8 BOM
-            if (text.charCodeAt(0) === 0xFEFF) {
+            if (!text) {
+                setStatus('CSV is empty.');
+                return [];
+            }
+
+            // Strip UTF-8 BOM if present
+            if (text.charCodeAt && text.charCodeAt(0) === 0xFEFF) {
                 text = text.slice(1);
             }
 
@@ -127,19 +133,18 @@
                 return [];
             }
 
-            const lines = text.split("\n");
+            const lines = text.split('\n');
             console.log('CSV lines:', lines.length);
 
-            const headerLine = lines[0];
-            const sep = headerLine.includes(';') ? ';' : ',';
-            const header = headerLine.split(sep).map(h => h.trim());
+            const header = lines[0].split(',').map(h => h.trim());
 
             const nameIdx = header.indexOf('Name');
             const edipiIdx = header.indexOf('EDIPI');
             const logonIdx = header.indexOf('Last Logon');
+            const domainIdx = header.indexOf('Domain/Enclave');
 
-            if (nameIdx === -1 || edipiIdx === -1 || logonIdx === -1) {
-                setStatus('Header must contain "Name", "EDIPI", and "Last Logon". Found: ' + header.join(', '));
+            if (nameIdx === -1 || edipiIdx === -1 || logonIdx === -1 || domainIdx === -1) {
+                setStatus('Header must contain "Name", "EDIPI", "Last Logon", and "Domain/Enclave". Found: ' + header.join(', '));
                 return [];
             }
 
@@ -148,11 +153,12 @@
                 const line = lines[i].trim();
                 if (!line) continue;
 
-                const cols = line.split(sep);
+                const cols = line.split(',');
                 data.push({
                     name: (cols[nameIdx] || '').trim(),
                     edipi: (cols[edipiIdx] || '').trim(),
-                    lastLogon: (cols[logonIdx] || '').trim()
+                    lastLogon: (cols[logonIdx] || '').trim(),
+                    domain: (cols[domainIdx] || '').trim()
                 });
             }
 
@@ -167,7 +173,7 @@
             if (!list || list.length === 0) {
                 const tr = document.createElement('tr');
                 const td = document.createElement('td');
-                td.colSpan = 3;
+                td.colSpan = 4;
                 td.className = 'no-results';
                 td.textContent = 'No matching users found.';
                 tr.appendChild(td);
@@ -187,9 +193,13 @@
                 const lastLogonTd = document.createElement('td');
                 lastLogonTd.textContent = user.lastLogon;
 
+                const domainTd = document.createElement('td');
+                domainTd.textContent = user.domain || '';
+
                 tr.appendChild(nameTd);
                 tr.appendChild(edipiTd);
                 tr.appendChild(lastLogonTd);
+                tr.appendChild(domainTd);
 
                 tbody.appendChild(tr);
             });
@@ -205,8 +215,9 @@
             }
 
             const filtered = allUsers.filter(u =>
-                u.name.toLowerCase().includes(term) ||
-                u.edipi.toLowerCase().includes(term)
+                (u.name || '').toLowerCase().includes(term) ||
+                (u.edipi || '').toLowerCase().includes(term) ||
+                (u.domain || '').toLowerCase().includes(term)
             );
 
             renderTable(filtered);
@@ -214,7 +225,7 @@
         }
 
         async function loadData() {
-            setStatus('Loading CSV from GitHub Pages…');
+            setStatus('Loading CSV…');
 
             try {
                 const res = await fetch(CSV_URL, { cache: 'no-store' });
