@@ -115,42 +115,51 @@
 
     let headers = [];
     let allRows = [];
-
-    // new: per-column filters + sort config
-    let colFilters = {}; // { headerName: "filter text" }
+    let colFilters = {}; // { headerName: filterString }
     let sortConfig = { key: null, direction: "asc" }; // or "desc"
 
     function setStatus(msg) {
         document.getElementById("status").textContent = msg;
     }
 
-    // SAME basic parser as your working version, but we reuse its globals
     function parseCSV(text) {
-        if (text.charCodeAt && text.charCodeAt(0) === 0xFEFF) {
+        if (!text) {
+            headers = [];
+            allRows = [];
+            return;
+        }
+
+        // Strip BOM if present
+        if (text.charCodeAt(0) === 0xFEFF) {
             text = text.slice(1);
         }
 
         text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
         const lines = text.split("\n");
+        if (lines.length === 0) {
+            headers = [];
+            allRows = [];
+            return;
+        }
 
-        const sep = lines[0].includes(";") ? ";" : ",";
+        const headerLine = lines[0];
+        const sep = headerLine.includes(";") ? ";" : ",";
 
-        headers = lines[0].split(sep).map(h => h.trim());
+        headers = headerLine.split(sep).map(h => h.trim());
 
-        allRows = lines.slice(1).filter(line => line.trim().length > 0).map(line => {
-            const cols = line.split(sep);
-            const obj = {};
-            headers.forEach((h, i) => {
-                obj[h] = (cols[i] || "").trim();
+        allRows = lines.slice(1)
+            .filter(line => line.trim().length > 0)
+            .map(line => {
+                const cols = line.split(sep);
+                const obj = {};
+                headers.forEach((h, i) => {
+                    obj[h] = (cols[i] || "").trim();
+                });
+                return obj;
             });
-            return obj;
-        });
-
-        return { headers, rows: allRows };
     }
 
-    // Build the header row (sortable) + filter row
-    function renderTableHeaders() {
+    function renderHeaders() {
         const thead = document.querySelector("#usersTable thead");
         thead.innerHTML = "";
 
@@ -165,7 +174,6 @@
 
             const indicatorSpan = document.createElement("span");
             indicatorSpan.classList.add("sort-indicator");
-
             if (sortConfig.key === h) {
                 indicatorSpan.textContent = sortConfig.direction === "asc" ? "▲" : "▼";
             } else {
@@ -182,14 +190,14 @@
                     sortConfig.key = h;
                     sortConfig.direction = "asc";
                 }
-                renderTable(); // refresh headers + body so arrows update
+                renderTable(); // re-render headers + body so arrows update
             });
 
             headerRow.appendChild(th);
         });
         thead.appendChild(headerRow);
 
-        // Row 2: per-column filters
+        // Row 2: per-column filter inputs
         const filterRow = document.createElement("tr");
         headers.forEach(h => {
             const td = document.createElement("td");
@@ -209,19 +217,18 @@
         thead.appendChild(filterRow);
     }
 
-    // Apply global search + column filters + sort to allRows
     function getFilteredAndSortedRows() {
         let rows = allRows.slice();
         const globalTerm = document.getElementById("searchBox").value.toLowerCase().trim();
 
-        // Global search
+        // Apply global search
         if (globalTerm) {
             rows = rows.filter(row =>
                 headers.some(h => (row[h] || "").toLowerCase().includes(globalTerm))
             );
         }
 
-        // Per-column filters
+        // Apply per-column filters
         rows = rows.filter(row => {
             for (const h of headers) {
                 const filterVal = colFilters[h];
@@ -235,7 +242,7 @@
             return true;
         });
 
-        // Sort
+        // Apply sorting
         if (sortConfig.key) {
             const key = sortConfig.key;
             const dir = sortConfig.direction === "asc" ? 1 : -1;
@@ -252,7 +259,6 @@
         return rows;
     }
 
-    // Render body from filtered/sorted data
     function renderBody() {
         const tbody = document.querySelector("#usersTable tbody");
         tbody.innerHTML = "";
@@ -271,11 +277,11 @@
             return;
         }
 
-        rows.forEach(obj => {
+        rows.forEach(row => {
             const tr = document.createElement("tr");
             headers.forEach(h => {
                 const td = document.createElement("td");
-                td.textContent = obj[h] || "";
+                td.textContent = row[h] || "";
                 tr.appendChild(td);
             });
             tbody.appendChild(tr);
@@ -285,7 +291,7 @@
     }
 
     function renderTable() {
-        renderTableHeaders();
+        renderHeaders();
         renderBody();
     }
 
@@ -297,10 +303,9 @@
                 setStatus(`Failed to load CSV: ${res.status} ${res.statusText}`);
                 return;
             }
-
             const text = await res.text();
 
-            // Guard: if we accidentally fetched HTML instead of CSV
+            // Guard against accidentally pulling HTML instead of CSV
             if (text.startsWith("<!DOCTYPE html") || text.startsWith("<html")) {
                 setStatus("Got HTML instead of CSV. Check CSV_URL/path.");
                 console.error("Response looked like HTML, not CSV:", text.slice(0, 200));
