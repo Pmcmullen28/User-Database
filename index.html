@@ -2,17 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>User Directory</title>
+    <title>User Directory (Dynamic Headers)</title>
     <style>
         body {
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-family: system-ui, sans-serif;
             margin: 20px;
             background: #f4f5f7;
         }
 
-        h1 {
-            margin-bottom: 8px;
-        }
+        h1 { margin-bottom: 8px; }
 
         .subheading {
             margin-bottom: 16px;
@@ -63,13 +61,8 @@
             font-size: 14px;
         }
 
-        tr:nth-child(even) {
-            background: #f9fafb;
-        }
-
-        tr:hover {
-            background: #e5f1ff;
-        }
+        tr:nth-child(even) { background: #f9fafb; }
+        tr:hover { background: #e5f1ff; }
 
         .no-results {
             text-align: center;
@@ -81,189 +74,141 @@
 <body>
     <h1>User Directory</h1>
     <div class="subheading">
-        Directory backed by ISS, contact CFP if updates need to be made. Search by Name, EDIPI, or Domain/Enclave.
+        This table automatically adapts to whatever headers appear in <code>random_users_500.csv</code>.
     </div>
 
     <div class="controls">
-        <input type="text" id="searchBox" placeholder="Search by Name, EDIPI, or Domain/Enclave…" aria-label="Search users">
-        <button type="button" id="clearBtn">Clear</button>
+        <input type="text" id="searchBox" placeholder="Search any column…">
+        <button id="clearBtn">Clear</button>
         <span id="status"></span>
     </div>
 
     <table id="usersTable">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>EDIPI</th>
-                <th>Last Logon</th>
-                <th>Domain/Enclave</th>
-            </tr>
-        </thead>
+        <thead></thead>
         <tbody>
             <tr>
-                <td colspan="4" class="no-results">Loading data…</td>
+                <td class="no-results">Loading CSV…</td>
             </tr>
         </tbody>
     </table>
 
-    <script>
-        const CSV_URL = 'random_users.csv'; // must live next to index.html
-        let allUsers = [];
+<script>
+    const CSV_URL = "random_users_500.csv";
 
-        function setStatus(msg) {
-            document.getElementById('status').textContent = msg;
-            console.log('[STATUS]', msg);
+    let headers = [];
+    let allRows = [];
+
+    function setStatus(msg) {
+        document.getElementById('status').textContent = msg;
+    }
+
+    function parseCSV(text) {
+        if (text.charCodeAt(0) === 0xFEFF) {
+            text = text.slice(1);
         }
 
-        // Simple CSV parser that assumes comma-separated, pre-formatted CSV (no quoted commas expected)
-        function parseCSV(text) {
-            if (!text) {
-                setStatus('CSV is empty.');
-                return [];
-            }
+        text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+        const lines = text.split('\n');
 
-            // Strip UTF-8 BOM if present
-            if (text.charCodeAt && text.charCodeAt(0) === 0xFEFF) {
-                text = text.slice(1);
-            }
+        const sep = lines[0].includes(';') ? ';' : ',';
 
-            text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
-            if (!text) {
-                setStatus('CSV is empty.');
-                return [];
-            }
+        headers = lines[0].split(sep).map(h => h.trim());
 
-            const lines = text.split('\n');
-            console.log('CSV lines:', lines.length);
-
-            const header = lines[0].split(',').map(h => h.trim());
-
-            const nameIdx = header.indexOf('Name');
-            const edipiIdx = header.indexOf('EDIPI');
-            const logonIdx = header.indexOf('Last Logon');
-            const domainIdx = header.indexOf('Domain/Enclave');
-
-            if (nameIdx === -1 || edipiIdx === -1 || logonIdx === -1 || domainIdx === -1) {
-                setStatus('Header must contain "Name", "EDIPI", "Last Logon", and "Domain/Enclave". Found: ' + header.join(', '));
-                return [];
-            }
-
-            const data = [];
-            for (let i = 1; i < lines.length; i++) {
-                const line = lines[i].trim();
-                if (!line) continue;
-
-                const cols = line.split(',');
-                data.push({
-                    name: (cols[nameIdx] || '').trim(),
-                    edipi: (cols[edipiIdx] || '').trim(),
-                    lastLogon: (cols[logonIdx] || '').trim(),
-                    domain: (cols[domainIdx] || '').trim()
-                });
-            }
-
-            console.log('Parsed records:', data.length);
-            return data;
-        }
-
-        function renderTable(list) {
-            const tbody = document.querySelector('#usersTable tbody');
-            tbody.innerHTML = '';
-
-            if (!list || list.length === 0) {
-                const tr = document.createElement('tr');
-                const td = document.createElement('td');
-                td.colSpan = 4;
-                td.className = 'no-results';
-                td.textContent = 'No matching users found.';
-                tr.appendChild(td);
-                tbody.appendChild(tr);
-                return;
-            }
-
-            list.forEach(user => {
-                const tr = document.createElement('tr');
-
-                const nameTd = document.createElement('td');
-                nameTd.textContent = user.name;
-
-                const edipiTd = document.createElement('td');
-                edipiTd.textContent = user.edipi;
-
-                const lastLogonTd = document.createElement('td');
-                lastLogonTd.textContent = user.lastLogon;
-
-                const domainTd = document.createElement('td');
-                domainTd.textContent = user.domain || '';
-
-                tr.appendChild(nameTd);
-                tr.appendChild(edipiTd);
-                tr.appendChild(lastLogonTd);
-                tr.appendChild(domainTd);
-
-                tbody.appendChild(tr);
+        allRows = lines.slice(1).map(line => {
+            const cols = line.split(sep);
+            const obj = {};
+            headers.forEach((h, i) => {
+                obj[h] = (cols[i] || "").trim();
             });
-        }
-
-        function applyFilter() {
-            const term = document.getElementById('searchBox').value.trim().toLowerCase();
-
-            if (!term) {
-                renderTable(allUsers);
-                setStatus(`Showing ${allUsers.length} user(s).`);
-                return;
-            }
-
-            const filtered = allUsers.filter(u =>
-                (u.name || '').toLowerCase().includes(term) ||
-                (u.edipi || '').toLowerCase().includes(term) ||
-                (u.domain || '').toLowerCase().includes(term)
-            );
-
-            renderTable(filtered);
-            setStatus(`Found ${filtered.length} matching user(s) for "${term}".`);
-        }
-
-        async function loadData() {
-            setStatus('Loading CSV…');
-
-            try {
-                const res = await fetch(CSV_URL, { cache: 'no-store' });
-                if (!res.ok) {
-                    setStatus('Failed to load CSV: ' + res.status + ' ' + res.statusText);
-                    renderTable([]);
-                    return;
-                }
-
-                const text = await res.text();
-                allUsers = parseCSV(text);
-
-                if (allUsers.length === 0) {
-                    setStatus('CSV loaded but no data rows found.');
-                    renderTable([]);
-                    return;
-                }
-
-                renderTable(allUsers);
-                setStatus(`Loaded ${allUsers.length} user(s) from CSV.`);
-            } catch (err) {
-                console.error(err);
-                setStatus('Error loading CSV. Check that random_users.csv is in the same folder as index.html.');
-                renderTable([]);
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('searchBox').addEventListener('input', applyFilter);
-            document.getElementById('clearBtn').addEventListener('click', () => {
-                const box = document.getElementById('searchBox');
-                box.value = '';
-                applyFilter();
-                box.focus();
-            });
-
-            loadData();
+            return obj;
         });
-    </script>
+
+        return { headers, rows: allRows };
+    }
+
+    function renderTableHeaders() {
+        const thead = document.querySelector("#usersTable thead");
+        thead.innerHTML = "";
+
+        const tr = document.createElement("tr");
+        headers.forEach(h => {
+            const th = document.createElement("th");
+            th.textContent = h;
+            tr.appendChild(th);
+        });
+
+        thead.appendChild(tr);
+    }
+
+    function renderTableRows(rows) {
+        const tbody = document.querySelector("#usersTable tbody");
+        tbody.innerHTML = "";
+
+        if (rows.length === 0) {
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = headers.length;
+            td.textContent = "No results.";
+            td.className = "no-results";
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+            return;
+        }
+
+        rows.forEach(obj => {
+            const tr = document.createElement("tr");
+            headers.forEach(h => {
+                const td = document.createElement("td");
+                td.textContent = obj[h] || "";
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    function applyFilter() {
+        const term = document.getElementById("searchBox").value.toLowerCase().trim();
+        if (!term) {
+            renderTableRows(allRows);
+            setStatus(`Showing ${allRows.length} rows.`);
+            return;
+        }
+
+        const filtered = allRows.filter(row =>
+            headers.some(h => (row[h] || "").toLowerCase().includes(term))
+        );
+
+        renderTableRows(filtered);
+        setStatus(`Matched ${filtered.length} rows.`);
+    }
+
+    async function loadCSV() {
+        try {
+            const res = await fetch(CSV_URL, { cache: "no-store" });
+            const text = await res.text();
+
+            const parsed = parseCSV(text);
+
+            renderTableHeaders();
+            renderTableRows(parsed.rows);
+
+            setStatus(`Loaded ${parsed.rows.length} rows with ${parsed.headers.length} columns.`);
+        } catch (e) {
+            setStatus("Failed to load CSV.");
+            console.error(e);
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        document.getElementById("searchBox").addEventListener("input", applyFilter);
+        document.getElementById("clearBtn").addEventListener("click", () => {
+            document.getElementById("searchBox").value = "";
+            applyFilter();
+        });
+
+        loadCSV();
+    });
+</script>
+
 </body>
 </html>
